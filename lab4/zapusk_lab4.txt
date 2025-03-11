@@ -1,0 +1,16 @@
+1. Создаём динамические библиотеки
+1.1 gcc -shared -fPIC -o libnaive.so libnaive.c
+1.2 gcc -shared -fPIC -o liboptimized.so liboptimized.c
+
+2. Компиляция программ. 
+2.1Компилируем program_1.c (линковка во время компиляции)
+gcc -o program_1 program_1.c -L. -lnaive
+2.2 Компилируем program_2.c (загрузка библиотек во время выполнения)
+gcc -o program_2 program_2.c -ldl
+
+3. export LD_LIBRARY_PATH=.:$LD_LIBRARY_PATH
+
+4. ./program_1
+4.1 ввод
+
+5. ./program_2

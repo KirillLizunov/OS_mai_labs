@@ -1,0 +1,172 @@
+#include <stdio.h>      // Подключение библиотеки для работы с вводом/выводом
+#include <stdlib.h>     // Подключение стандартной библиотеки (malloc, free, atoi и др.)
+#include <pthread.h>    // Подключение библиотеки для работы с потоками
+#include <math.h>       // Подключение библиотеки для работы с математическими функциями
+#include <time.h>       // Подключение библиотеки для работы с измерением времени
+#include <dispatch/dispatch.h>  // Подключение библиотеки для работы с семафорами на macOS
+
+#define MAX_SIZE 3000  // Максимальный размер матрицы
+#define EPSILON 1e-9   // Погрешность для проверки деления на ноль
+
+int n;  // Количество переменных в системе
+float A[MAX_SIZE][MAX_SIZE + 1];  // Расширенная матрица (последний столбец - свободные члены)
+float x[MAX_SIZE];  // Массив решений
+int max_threads;  // Максимальное количество потоков
+
+dispatch_semaphore_t semaphore;  // Создание семафора для контроля потоков
+
+typedef struct {
+    int row;
+    int pivot;
+} ThreadData;  // Структура для передачи параметров в поток
+
+// Функция вывода системы уравнений
+void print_system() {
+    printf("\nИсходная система уравнений:\n");
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= n; j++) {
+            printf("%.2f*x%d", A[i][j], j);
+            if (j < n) {
+                printf(" + ");
+            }
+        }
+        printf(" = %.2f\n", A[i][n + 1]);
+    }
+}
+
+// Функция генерации случайной матрицы
+void generate_random_matrix() {
+    unsigned int seed = 1234;  // Фиксируем seed для повторяемости
+    srand(seed);
+
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= n; j++) {
+            A[i][j] = rand() % 10 + 1;
+        }
+        A[i][n + 1] = rand() % 10 + 1;  // Заполняем свободные члены
+    }
+}
+
+// Функция ввода матрицы с клавиатуры
+void input_matrix_from_console() {
+    printf("\nВведите коэффициенты системы уравнений:\n");
+    for (int i = 1; i <= n; i++) {
+        for (int j = 1; j <= n + 1; j++) {
+            printf("a[%d][%d] = ", i, j);
+            while (scanf("%f", &A[i][j]) != 1) {
+                fprintf(stderr, "Ошибка: некорректный ввод. Попробуйте снова.\n");
+                while (getchar() != '\n');  // Очистка буфера
+                printf("a[%d][%d] = ", i, j);
+            }
+        }
+    }
+}
+
+// Функция выполнения одного шага исключения Гаусса в потоке
+void *gauss_elimination(void *arg) {
+    ThreadData *data = (ThreadData *)arg;
+    int i = data->row;
+    int j = data->pivot;
+    float c;
+
+    if (fabs(A[j][j]) < EPSILON) {  // Проверка на нулевой главный элемент
+        dispatch_semaphore_signal(semaphore);
+        pthread_exit(NULL);
+    }
+
+    c = A[i][j] / A[j][j];  // Вычисляем множитель для исключения переменной
+    for (int k = j; k <= n; k++) {
+        A[i][k] -= c * A[j][k];
+    }
+    A[i][n + 1] -= c * A[j][n + 1];
+
+    dispatch_semaphore_signal(semaphore);  // Освобождаем семафор
+    pthread_exit(NULL);
+}
+
+// Функция обратного хода метода Гаусса
+void backward_substitution() {
+    for (int i = n; i >= 1; i--) {
+        float sum = A[i][n + 1];
+        for (int j = i + 1; j <= n; j++) {
+            sum -= A[i][j] * x[j];
+        }
+        x[i] = sum / A[i][i];
+    }
+}
+
+// Функция вывода решений системы
+void print_solutions() {
+    printf("\nРешения системы:\n");
+    for (int i = 1; i <= n; i++) {
+        printf("x%d = %.6f\n", i, x[i]);
+    }
+}
+
+int main(int argc, char *argv[]) {
+    if (argc != 2) {
+        fprintf(stderr, "Использование: %s <максимальное число потоков>\n", argv[0]);
+        return -1;
+    }
+
+    max_threads = atoi(argv[1]);
+    if (max_threads <= 0) {
+        fprintf(stderr, "Ошибка: максимальное число потоков должно быть больше 0.\n");
+        return -1;
+    }
+
+    semaphore = dispatch_semaphore_create(max_threads);
+
+    printf("Введите количество переменных в системе (1-%d): ", MAX_SIZE);
+    while (scanf("%d", &n) != 1 || n <= 0 || n > MAX_SIZE) {
+        fprintf(stderr, "Ошибка: некорректное количество переменных. Попробуйте снова.\n");
+        while (getchar() != '\n');
+    }
+
+    printf("Выберите способ ввода матрицы:\n1 - Ввести с консоли\n2 - Сгенерировать случайно\n");
+    int choice;
+    while (scanf("%d", &choice) != 1 || (choice != 1 && choice != 2)) {
+        fprintf(stderr, "Ошибка: некорректный выбор. Попробуйте снова.\n");
+        while (getchar() != '\n');
+    }
+
+    if (choice == 1) {
+        input_matrix_from_console();
+    } else {
+        generate_random_matrix();
+    }
+
+    print_system();
+
+    pthread_t threads[MAX_SIZE];
+    ThreadData thread_data[MAX_SIZE];
+
+    clock_t start_time = clock();
+
+    for (int pivot = 1; pivot <= n; pivot++) {
+        for (int i = pivot + 1; i <= n; i++) {
+            thread_data[i - pivot - 1].row = i;
+            thread_data[i - pivot - 1].pivot = pivot;
+
+            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+
+            if (pthread_create(&threads[i - pivot - 1], NULL, gauss_elimination, &thread_data[i - pivot - 1]) != 0) {
+                fprintf(stderr, "Ошибка: не удалось создать поток для строки %d.\n", i);
+                return -1;
+            }
+        }
+
+        for (int i = 0; i < n - pivot; i++) {
+            pthread_join(threads[i], NULL);
+        }
+    }
+
+    backward_substitution();
+    print_solutions();
+
+    clock_t end_time = clock();
+    double time_spent = (double)(end_time - start_time) / CLOCKS_PER_SEC;
+    printf("\nВремя выполнения программы: %f секунд\n", time_spent);
+
+    return 0;
+}

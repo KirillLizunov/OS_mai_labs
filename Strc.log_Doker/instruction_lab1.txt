@@ -1,0 +1,5 @@
+1. докер файл должен быть не в src, запускаем программу из labX
+2. собрать докер образ: docker build -t parent-child-app .
+3. Запустите контейнер и взаимодействуйте с программой: docker run --rm -it parent-child-app
+4. Если контейнер завершился, найдите его ID с помощью: docker ps -lq
+5. Используйте команду docker cp, чтобы извлечь лог: docker cp <container_id>:/app/lab1/src/strace.log ./src/

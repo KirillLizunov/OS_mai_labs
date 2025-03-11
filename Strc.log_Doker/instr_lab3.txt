@@ -1,0 +1,8 @@
+1.  Пересобери Docker-образ:
+    docker build -t my_lab_project .
+
+2.  Запусти контейнер с strace:
+    docker run --rm my_lab_project
+
+3.  Скопируй лог на хост-машину (если нужно):
+    docker cp $(docker create my_lab_project):/app/strace.log ./strace.log
