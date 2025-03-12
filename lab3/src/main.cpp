@@ -28,9 +28,6 @@ int main() {
     std::string file2_name;
     std::getline(std::cin, file2_name);
 
-    // std::string file1_name = "/app/output1.txt";
-    // std::string file2_name = "/app/output2.txt";
-
     int file1 = open(file1_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     int file2 = open(file2_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (file1 < 0 || file2 < 0) {

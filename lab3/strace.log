@@ -417,3 +417,42 @@
    unlink("/dev/shm/shm_child2")     = 0
    exit_group(0)                     = ?
    +++ exited with 0 +++
+
+
+
+
+
+
+
+
+Strace только нужное:
+
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f5fae1a2000 //Анонимные выделения памяти (обычно для стека, буферов или heap-менеджера glibc)
+mmap(NULL, 25258, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f5fae19b000  //маппинг библиотек (libc.so, libm.so, libstdc++.so). Используются файл-дескрипторы (fd = 3)
+mmap(NULL, 2543808, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f5fadf2d000
+mmap(0x7f5fadfd2000, 1216512, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0xa5000) = 0x7f5fadfd2000
+mmap(0x7f5fae0fb000, 581632, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1ce000) = 0x7f5fae0fb000
+mmap(0x7f5fae189000, 57344, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x25c000) = 0x7f5fae189000
+mmap(0x7f5fae197000, 12480, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7f5fae197000  //Анонимные выделения памяти (обычно для стека, буферов или heap-менеджера glibc)
+mmap(NULL, 909560, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f5fade4e000
+mmap(0x7f5fade5e000, 471040, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x10000) = 0x7f5fade5e000
+mmap(0x7f5faded1000, 368640, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x83000) = 0x7f5faded1000
+mmap(0x7f5fadf2b000, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0xdc000) = 0x7f5fadf2b000
+mmap(NULL, 181160, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f5fade21000
+mmap(0x7f5fade25000, 143360, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x4000) = 0x7f5fade25000
+mmap(0x7f5fade48000, 16384, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x27000) = 0x7f5fade48000
+mmap(0x7f5fade4c000, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x2b000) = 0x7f5fade4c000
+mmap(NULL, 1970000, PROT_READ, MAP_PRIVATE|MAP_DENYWRITE, 3, 0) = 0x7f5fadc40000
+mmap(0x7f5fadc66000, 1396736, PROT_READ|PROT_EXEC, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x26000) = 0x7f5fadc66000
+mmap(0x7f5faddbb000, 339968, PROT_READ, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x17b000) = 0x7f5faddbb000
+mmap(0x7f5fade0e000, 24576, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_DENYWRITE, 3, 0x1ce000) = 0x7f5fade0e000
+mmap(0x7f5fade14000, 53072, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_FIXED|MAP_ANONYMOUS, -1, 0) = 0x7f5fade14000  //Анонимные выделения памяти (обычно для стека, буферов или heap-менеджера glibc)
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f5fadc3e000  //Анонимные выделения памяти (обычно для стека, буферов или heap-менеджера glibc)
+mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f5fadc3c000  //Анонимные выделения памяти (обычно для стека, буферов или heap-менеджера glibc)
+munmap(0x7f5fae19b000, 25258)           = 0 //Этот munmap выполняется автоматически системой
+openat(AT_FDCWD, "/dev/shm/shm_child1", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0666) = 5   //Создание файлов в /dev/shm/
+openat(AT_FDCWD, "/dev/shm/shm_child2", O_RDWR|O_CREAT|O_NOFOLLOW|O_CLOEXEC, 0666) = 6
+mmap(NULL, 1096, PROT_READ|PROT_WRITE, MAP_SHARED, 5, 0) = 0x7f5fae1a1000 //Отображение файлов в память
+mmap(NULL, 1096, PROT_READ|PROT_WRITE, MAP_SHARED, 6, 0) = 0x7f5fae1a0000
+munmap(0x7f5fae1a1000, 1096)            = 0  //Очищение памяти после работы. Освобождает mmap() shared memory.
+munmap(0x7f5fae1a0000, 1096)            = 0
