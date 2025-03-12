@@ -425,7 +425,7 @@
 
 
 
-Strace только нужное:
+// Strace только нужное:
 
 mmap(NULL, 8192, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS, -1, 0) = 0x7f5fae1a2000 //Анонимные выделения памяти (обычно для стека, буферов или heap-менеджера glibc)
 mmap(NULL, 25258, PROT_READ, MAP_PRIVATE, 3, 0) = 0x7f5fae19b000  //маппинг библиотек (libc.so, libm.so, libstdc++.so). Используются файл-дескрипторы (fd = 3)

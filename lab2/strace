@@ -51,8 +51,8 @@ mmap(NULL, 8392704, PROT_NONE, MAP_PRIVATE|MAP_ANONYMOUS|MAP_STACK, -1, 0) = 0x7
 mprotect(0x7f6bee3b9000, 8388608, PROT_READ|PROT_WRITE) = 0
 rt_sigprocmask(SIG_BLOCK, ~[], [], 8)   = 0
 
-Системный вызов clone3() отвечает за создание потоков. 
-Каждый такой вызов clone3() создаёт новый поток, а child_tid указывает идентификатор нового потока.
+# Системный вызов clone3() отвечает за создание потоков. 
+# Каждый такой вызов clone3() создаёт новый поток, а child_tid указывает идентификатор нового потока.
 
 clone3({flags=CLONE_VM|CLONE_FS|CLONE_FILES|CLONE_SIGHAND|CLONE_THREAD|CLONE_SYSVSEM|CLONE_SETTLS|CLONE_PARENT_SETTID|CLONE_CHILD_CLEARTID, child_tid=0x7f6beebb8990, parent_tid=0x7f6beebb8990, exit_signal=0, stack=0x7f6bee3b8000, stack_size=0x7fff80, tls=0x7f6beebb86c0} => {parent_tid=[7614]}, 88) = 7614
 rt_sigprocmask(SIG_SETMASK, [], NULL, 8) = 0
