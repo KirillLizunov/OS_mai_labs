@@ -1,0 +1,301 @@
+#include <iostream>
+#include <string>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <sys/mman.h> // Работа с memory mapping (`mmap`, `shm_open`)
+#include <semaphore.h>
+#include <sys/wait.h>
+#include <cstring>
+#include <cstdlib>
+
+//обмен данными через отображаемый файл
+struct shared_data {
+    sem_t sem_parent;  // Семафор для родителя (контроль отправки)
+    sem_t sem_child;   // Семафор для ребенка (контроль обработки)
+    char buffer[1024]; // Буфер для передачи данных
+    int terminate;     // Флаг завершения работы
+    char last_written[1024]; // Последнее записанное значение
+};
+
+int main() {
+    std::cout << "name for child process 1: ";
+    std::string file1_name;
+    std::getline(std::cin, file1_name);
+
+    std::cout << "name for child process 2: ";
+    std::string file2_name;
+    std::getline(std::cin, file2_name);
+
+//Запрашиваем у пользователя два имени файлов для записи вывода каждого дочернего процесса
+std::getline(std::cin, file1_name); читаем строку с именем файла
+
+
+    int file1 = open(file1_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+    int file2 = open(file2_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+
+//Разбор open()
+
+O_WRONLY → Открываем только на запись.
+O_CREAT → Создаем файл, если он не существует.
+O_TRUNC → Очищаем файл, если он уже был.
+0644 → Права доступа (rw-r--r-- → владелец может писать/читать, остальные — только читать).
+    
+    if (file1 < 0 || file2 < 0) {
+        perror("Can't open file");
+        exit(1);
+    }
+
+    const char *shm_name1 = "/shm_child1";
+    const char *shm_name2 = "/shm_child2";
+
+    shm_unlink(shm_name1);
+    shm_unlink(shm_name2);
+
+    int shm_fd1 = shm_open(shm_name1, O_CREAT | O_RDWR, 0666);
+    int shm_fd2 = shm_open(shm_name2, O_CREAT | O_RDWR, 0666);
+
+//Разбор shm_open()
+
+shm_unlink() → Удаляет разделяемую память, если она уже существует.
+shm_open() → Создаёт POSIX shared memory (разделяемый объект памяти).
+O_CREAT | O_RDWR → Создаем, если нет, открываем на чтение/запись.
+0666 → Доступен всем (rw-rw-rw-).
+
+
+    if (shm_fd1 == -1 || shm_fd2 == -1) {
+        perror("Can't create shared memory object");
+        exit(1);
+    }
+
+    ftruncate(shm_fd1, sizeof(shared_data));
+    ftruncate(shm_fd2, sizeof(shared_data));
+
+    shared_data *shm_ptr1 = (shared_data *) mmap(NULL, sizeof(shared_data), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd1, 0);
+    shared_data *shm_ptr2 = (shared_data *) mmap(NULL, sizeof(shared_data), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd2, 0);
+
+//Разбор mmap()
+
+ftruncate() → Задаёт размер разделяемой памяти (sizeof(shared_data)).
+mmap() → Отображает память в виртуальное адресное пространство процесса.
+PROT_READ | PROT_WRITE → Разрешает чтение/запись.
+MAP_SHARED → Память разделяется между процессами.
+
+
+    if (shm_ptr1 == MAP_FAILED || shm_ptr2 == MAP_FAILED) {
+        perror("Can't mmap shared memory");
+        exit(1);
+    }
+
+    sem_init(&shm_ptr1->sem_parent, 1, 0);
+    sem_init(&shm_ptr1->sem_child, 1, 0);
+    sem_init(&shm_ptr2->sem_parent, 1, 0);
+    sem_init(&shm_ptr2->sem_child, 1, 0);
+
+//Разбор sem_init()
+
+1 → Семафор разделяемый между процессами.
+0 → Начальное значение (0 → блокировка).
+
+
+    shm_ptr1->terminate = 0;
+    shm_ptr2->terminate = 0;
+
+    strcpy(shm_ptr1->last_written, "");
+    strcpy(shm_ptr2->last_written, "");    
+
+    pid_t pid1 = fork();
+    if (pid1 < 0) {
+        perror("Can't fork");
+        exit(1);
+    }
+
+    if (pid1 == 0) {
+        munmap(shm_ptr2, sizeof(shared_data));
+        close(shm_fd2);
+
+        if (dup2(file1, STDOUT_FILENO) < 0) {
+            perror("Can't redirect stdout for child process 1");
+            exit(1);
+        }
+        close(file1);
+        close(file2);
+
+        execl("./child", "./child", shm_name1, NULL);
+        perror("Can't execute child process 1");
+        exit(1);
+    }
+
+//Разбор fork()
+
+fork() → Создает копию текущего процесса.
+В дочернем процессе (pid1 == 0):
+munmap(shm_ptr2, ...) → Отсоединяем ненужную память.
+dup2(file1, STDOUT_FILENO) → Перенаправляем stdout в файл.
+execl("./child", "./child", shm_name1, NULL) → Заменяем процесс на child.
+
+
+    pid_t pid2 = fork();
+    if (pid2 < 0) {
+        perror("Can't fork");
+        exit(1);
+    }
+
+    if (pid2 == 0) {
+        munmap(shm_ptr1, sizeof(shared_data));
+        close(shm_fd1);
+
+        if (dup2(file2, STDOUT_FILENO) < 0) {
+            perror("Can't redirect stdout for child process 2");
+            exit(1);
+        }
+        close(file2);
+        close(file1);
+
+        execl("./child", "./child", shm_name2, NULL);
+        perror("Can't execute child process 2");
+        exit(1);
+    }
+
+    close(file1);
+    close(file2);
+
+
+//цикл while — ядро программы. 
+Он обрабатывает ввод пользователя и управляет взаимодействием между родительским процессом и двумя дочерними процессами, 
+используя разделяемую память (shared memory) и семафоры.
+                /\   
+                |
+                |
+    while (true) {
+        std::string s;
+        std::getline(std::cin, s);
+
+//std::string s; — создаёт переменную s для хранения ввода.
+std::getline(std::cin, s); — читает целую строку (включая пробелы) из std::cin.
+
+Отличие от std::cin >> s;:
+std::cin >> s; → читает до первого пробела.
+std::getline(std::cin, s); → читает до конца строки (\n).
+
+
+        if (s.empty()) { 
+
+//s.empty() — возвращает true, если строка пуста ("").
+Это означает, что пользователь нажал Enter без ввода.
+
+            shm_ptr1->terminate = 1;
+            shm_ptr2->terminate = 1;
+
+//Обе разделяемые памяти получают terminate = 1, 
+сигнализируя дочерним процессам, что нужно завершиться.
+        
+            // Разблокируем процессы, если они ждут на sem_wait
+            sem_post(&shm_ptr1->sem_parent);
+            sem_post(&shm_ptr2->sem_parent);
+
+//sem_post(&shm_ptr1->sem_parent); → разблокирует первый дочерний процесс.
+sem_post(&shm_ptr2->sem_parent); → разблокирует второй дочерний процесс.
+
+Почему это нужно?
+
+Если дочерний процесс ждёт на sem_wait(&shm_ptr->sem_parent);, 
+он никогда не узнает, что нужно завершиться.
+sem_post() увеличивает значение семафора, разрешая процессу продолжить выполнение.
+        
+            sem_post(&shm_ptr1->sem_child);  // Разблокируем, если процесс ждёт
+            sem_post(&shm_ptr2->sem_child);
+
+//Если дочерний процесс ждал на sem_wait(&shm_ptr->sem_child);, он тоже может зависнуть.
+sem_post(&shm_ptr1->sem_child); и sem_post(&shm_ptr2->sem_child); 
+гарантируют, что он выйдет из ожидания.
+        
+            // Дождаться завершения дочерних процессов
+            waitpid(pid1, NULL, 0);
+            waitpid(pid2, NULL, 0);
+
+//waitpid(pid1, NULL, 0); — ждёт завершения первого дочернего процесса.
+waitpid(pid2, NULL, 0); — ждёт завершения второго дочернего процесса.
+
+Почему это важно?
+
+Без waitpid() дочерние процессы могли бы стать "зомби" (неосвобождённые ресурсы).            
+            
+            break;
+        }                
+
+        if (s.size() > 10) {
+            strcpy(shm_ptr2->buffer, s.c_str());
+//s.c_str() — преобразует std::string в const char*.
+strcpy(shm_ptr2->buffer, s.c_str()); — копирует строку в buffer.
+
+            sem_post(&shm_ptr2->sem_parent);  // Даем сигнал дочернему процессу
+//Увеличивает значение sem_parent, разрешая дочернему процессу начать работу.
+
+            sem_wait(&shm_ptr2->sem_child);   // Ждем ответного сигнала
+//Блокирует выполнение родителя, пока дочерний процесс не завершит работу.
+
+        } else {
+            strcpy(shm_ptr1->buffer, s.c_str());
+            sem_post(&shm_ptr1->sem_parent);
+            sem_wait(&shm_ptr1->sem_child);
+        }        
+//Если строка короче 10 символов, она отправляется первому дочернему процессу.
+
+    }
+
+    waitpid(pid1, NULL, 0);
+    waitpid(pid2, NULL, 0);
+
+//Что делает waitpid()?
+
+waitpid(pid, NULL, 0); → ожидает завершения процесса с pid.
+pid1 и pid2 — идентификаторы (PID) двух дочерних процессов.
+NULL означает, что код завершения процесса нам не важен.
+0 → стандартное ожидание завершения (без специальных флагов).    
+
+Без waitpid() дочерние процессы могут стать "зомби" (zombie process).
+
+
+    sem_destroy(&shm_ptr1->sem_parent); //удаляет семафор родителя для shm_child1.
+    sem_destroy(&shm_ptr1->sem_child); //удаляет семафор ребёнка для shm_child1.
+    sem_destroy(&shm_ptr2->sem_parent);
+    sem_destroy(&shm_ptr2->sem_child);
+
+//Что делает sem_destroy()?
+
+sem_destroy() уничтожает семафор, освобождая ресурсы.
+Семафор перестаёт существовать, и его нельзя использовать.
+Аргумент — указатель на sem_t, который мы инициализировали sem_init().
+
+
+    munmap(shm_ptr1, sizeof(shared_data));
+    munmap(shm_ptr2, sizeof(shared_data));
+
+//Что делает munmap()?
+
+munmap(ptr, size); отключает отображённую память от адресного пространства процесса.
+ptr — указатель на начало области памяти (shm_ptr1, shm_ptr2).
+size — размер памяти (sizeof(shared_data)).
+
+mmap() создаёт отображённую память, но ОС не очищает её автоматически.
+Если не вызвать munmap(), память будет занята, даже если процесс завершится.
+
+    close(shm_fd1);
+    close(shm_fd2);
+    shm_unlink(shm_name1);
+    shm_unlink(shm_name2);
+
+//Что делает shm_unlink()?
+
+shm_unlink(name); удаляет объект shared memory.
+После shm_unlink() память в /dev/shm/ будет освобождена.    
+
+Если не удалить shared memory, 
+она останется в системе (/dev/shm/).
+Другие процессы могут случайно использовать старые данные.
+В /dev/shm/ могут накапливаться ненужные объекты, занимая память.
+
+    return 0;
+}
