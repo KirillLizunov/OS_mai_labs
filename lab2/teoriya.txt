@@ -5,168 +5,232 @@
 #include <time.h>       // Подключение библиотеки для работы с измерением времени
 #include <dispatch/dispatch.h>  // Подключение библиотеки для работы с семафорами на macOS
 
-#define MAX_SIZE 3000  // Максимальный размер матрицы
-#define EPSILON 1e-9   // Погрешность для проверки деления на ноль
+#define MAX_VARS 3000  // Максимальный размер матрицы
+#define TOLERANCE 1e-9   // Погрешность для проверки деления на ноль
 
-int n;  // Количество переменных в системе
-float A[MAX_SIZE][MAX_SIZE + 1];  // Расширенная матрица (последний столбец - свободные члены)
-float x[MAX_SIZE];  // Массив решений
-int max_threads;  // Максимальное количество потоков
+int var_count;  // Количество переменных в системе
+float matrix[MAX_VARS][MAX_VARS + 1];  // Расширенная матрица (последний столбец - свободные члены)
+float solutions[MAX_VARS];  // Массив решений
+int thread_limit;  // Максимальное количество потоков
 
-dispatch_semaphore_t semaphore;  // Создание семафора для контроля потоков
+dispatch_semaphore_t thread_semaphore;  // Создание семафора для контроля потоков
 
 typedef struct {
-    int row;
-    int pivot;
-} ThreadData;  // Структура для передачи параметров в поток
+    int current_row;
+    int lead_element;
+} GaussThreadData;  // Структура для передачи параметров в поток
 
 // Функция вывода системы уравнений
-void print_system() {
-    printf("\nИсходная система уравнений:\n");
-    for (int i = 1; i <= n; i++) {
-        for (int j = 1; j <= n; j++) {
-            printf("%.2f*x%d", A[i][j], j);
-            if (j < n) {
-                printf(" + ");
-            }
+
+Функция display_system() проходит по матрице коэффициентов и 
+красиво форматирует систему линейных уравнений для вывода в консоль.
+Она удобна для визуальной проверки системы перед её решением.
+
+void display_system() {
+    printf("\nСистема уравнений:\n");
+    for (int row = 1; row <= var_count; row++) {
+        for (int col = 1; col <= var_count; col++) {
+            printf("%.2f*x%d", matrix[row][col], col);
+            if (col < var_count) printf(" + ");
         }
-        printf(" = %.2f\n", A[i][n + 1]);
+        printf(" = %.2f\n", matrix[row][var_count + 1]);    
     }
 }
 
 // Функция генерации случайной матрицы
-void generate_random_matrix() {
-    unsigned int seed = 1234;  // Фиксируем seed для повторяемости
-    srand(seed);
-
-    for (int i = 1; i <= n; i++) {
-        for (int j = 1; j <= n; j++) {
-            A[i][j] = rand() % 10 + 1;
+void create_random_matrix() {
+    srand(5678);    //Число 5678 делает так, что при каждом запуске программы будут генерироваться одинаковые случайные числа.
+    for (int row = 1; row <= var_count; row++) {    //Цикл по строкам матрицы (row от 1 до var_count).
+        for (int col = 1; col <= var_count; col++) {    //Вложенный цикл по столбцам (col от 1 до var_count).
+            matrix[row][col] = (rand() % 20) - 10;  //Теперь числа находятся в диапазоне от -10 до 9.
         }
-        A[i][n + 1] = rand() % 10 + 1;  // Заполняем свободные члены
+        matrix[row][var_count + 1] = (rand() % 20) - 10;
     }
 }
 
 // Функция ввода матрицы с клавиатуры
-void input_matrix_from_console() {
-    printf("\nВведите коэффициенты системы уравнений:\n");
-    for (int i = 1; i <= n; i++) {
-        for (int j = 1; j <= n + 1; j++) {
-            printf("a[%d][%d] = ", i, j);
-            while (scanf("%f", &A[i][j]) != 1) {
-                fprintf(stderr, "Ошибка: некорректный ввод. Попробуйте снова.\n");
-                while (getchar() != '\n');  // Очистка буфера
-                printf("a[%d][%d] = ", i, j);
+void input_matrix() {
+    for (int row = 1; row <= var_count; row++) {
+        for (int col = 1; col <= var_count + 1; col++) {
+            printf("Введите коэффициент matrix[%d][%d]: ", row, col);
+            while (scanf("%f", &matrix[row][col]) != 1) {
+                fprintf(stderr, "Ошибка: введите корректное значение.\n");
+                while (getchar() != '\n');
             }
         }
     }
 }
 
 // Функция выполнения одного шага исключения Гаусса в потоке
-void *gauss_elimination(void *arg) {
-    ThreadData *data = (ThreadData *)arg;
-    int i = data->row;
-    int j = data->pivot;
-    float c;
+void *gauss_step(void *arg) {
+    GaussThreadData *data = (GaussThreadData *)arg; //Теперь data хранит параметры потока.
+    int i = data->current_row; // Текущая строка
+    int pivot = data->lead_element; // Ведущий элемент (строка)
 
-    if (fabs(A[j][j]) < EPSILON) {  // Проверка на нулевой главный элемент
-        dispatch_semaphore_signal(semaphore);
-        pthread_exit(NULL);
+    if (fabs(matrix[pivot][pivot]) < TOLERANCE) {   //Проверяем, является ли ведущий элемент (диагональный) слишком маленьким (TOLERANCE — порог близости к нулю).
+        dispatch_semaphore_signal(thread_semaphore);    //Освобождаем семафор (dispatch_semaphore_signal(thread_semaphore)) → разрешаем другим потокам работать.
+        pthread_exit(NULL); //Если ведущий элемент слишком мал, поток завершается (pthread_exit(NULL)).
     }
 
-    c = A[i][j] / A[j][j];  // Вычисляем множитель для исключения переменной
-    for (int k = j; k <= n; k++) {
-        A[i][k] -= c * A[j][k];
+    float factor = matrix[i][pivot] / matrix[pivot][pivot]; // Находим коэффициент factor, на который будем домножать pivot-строку, чтобы занулить matrix[i][pivot].
+    for (int col = pivot; col <= var_count; col++) { // Обновляем элементы строки
+        matrix[i][col] -= factor * matrix[pivot][col];  //pivot остается фиксированным, i изменяется → обнуляем поддиагональные элементы.
     }
-    A[i][n + 1] -= c * A[j][n + 1];
+    matrix[i][var_count + 1] -= factor * matrix[pivot][var_count + 1];  //Аналогично обновляем свободный член уравнения.
 
-    dispatch_semaphore_signal(semaphore);  // Освобождаем семафор
+    dispatch_semaphore_signal(thread_semaphore);
     pthread_exit(NULL);
 }
 
 // Функция обратного хода метода Гаусса
-void backward_substitution() {
-    for (int i = n; i >= 1; i--) {
-        float sum = A[i][n + 1];
-        for (int j = i + 1; j <= n; j++) {
-            sum -= A[i][j] * x[j];
+void back_substitution() {
+    for (int row = var_count; row >= 1; row--) {    //Запускаем обратный цикл: идём снизу вверх по строкам.
+        float sum = matrix[row][var_count + 1]; //Берём свободный член уравнения (b в ax = b). Начинаем вычислять сумму произведений найденных ранее значений.
+        for (int col = row + 1; col <= var_count; col++) {
+            sum -= matrix[row][col] * solutions[col];   //Вычитая matrix[row][col] * solutions[col], мы убираем уже учтённые переменные, чтобы осталась только matrix[row][row] * x_row = sum.
         }
-        x[i] = sum / A[i][i];
+        solutions[row] = sum / matrix[row][row];    /Делим остаток суммы на коэффициент перед искомой переменной.
     }
 }
 
 // Функция вывода решений системы
-void print_solutions() {
+void display_solutions() {
     printf("\nРешения системы:\n");
-    for (int i = 1; i <= n; i++) {
-        printf("x%d = %.6f\n", i, x[i]);
+    for (int i = 1; i <= var_count; i++) {
+        printf("x%d = %.6f\n", i, solutions[i]);
     }
 }
 
 int main(int argc, char *argv[]) {
     if (argc != 2) {
-        fprintf(stderr, "Использование: %s <максимальное число потоков>\n", argv[0]);
-        return -1;
+        fprintf(stderr, "Использование: %s <число потоков>\n", argv[0]);
+        return EXIT_FAILURE;
     }
 
-    max_threads = atoi(argv[1]);
-    if (max_threads <= 0) {
-        fprintf(stderr, "Ошибка: максимальное число потоков должно быть больше 0.\n");
-        return -1;
+    thread_limit = atoi(argv[1]);
+    if (thread_limit <= 0) {
+        fprintf(stderr, "Ошибка: количество потоков должно быть положительным.\n");
+        return EXIT_FAILURE;
     }
 
-    semaphore = dispatch_semaphore_create(max_threads);
+    thread_semaphore = dispatch_semaphore_create(thread_limit);
 
-    printf("Введите количество переменных в системе (1-%d): ", MAX_SIZE);
-    while (scanf("%d", &n) != 1 || n <= 0 || n > MAX_SIZE) {
-        fprintf(stderr, "Ошибка: некорректное количество переменных. Попробуйте снова.\n");
+    printf("Введите количество переменных (1-%d): ", MAX_VARS);
+    while (scanf("%d", &var_count) != 1 || var_count <= 0 || var_count > MAX_VARS) {
+        fprintf(stderr, "Ошибка: некорректное значение. Попробуйте снова.\n");
         while (getchar() != '\n');
     }
 
-    printf("Выберите способ ввода матрицы:\n1 - Ввести с консоли\n2 - Сгенерировать случайно\n");
-    int choice;
-    while (scanf("%d", &choice) != 1 || (choice != 1 && choice != 2)) {
-        fprintf(stderr, "Ошибка: некорректный выбор. Попробуйте снова.\n");
+    printf("Выберите ввод: 1 - вручную, 2 - случайная генерация: ");
+    int mode;
+    while (scanf("%d", &mode) != 1 || (mode != 1 && mode != 2)) {
+        fprintf(stderr, "Ошибка: некорректный выбор.\n");
         while (getchar() != '\n');
     }
 
-    if (choice == 1) {
-        input_matrix_from_console();
-    } else {
-        generate_random_matrix();
-    }
+    (mode == 1) ? input_matrix() : create_random_matrix();  //Вызываем функцию заполнения матрицы вручную или случайно.
 
-    print_system();
+    display_system();   //Вызываем display_system(), чтобы напечатать введённую систему.
 
-    pthread_t threads[MAX_SIZE];
-    ThreadData thread_data[MAX_SIZE];
+    pthread_t threads[MAX_VARS];    //Создаём массив потоков threads[] (по количеству строк в матрице).
+    GaussThreadData thread_data[MAX_VARS];  //Создаём массив структур GaussThreadData, хранящих данные для потоков.
 
-    clock_t start_time = clock();
+    clock_t start = clock();
 
-    for (int pivot = 1; pivot <= n; pivot++) {
-        for (int i = pivot + 1; i <= n; i++) {
-            thread_data[i - pivot - 1].row = i;
-            thread_data[i - pivot - 1].pivot = pivot;
+    //Прямой ход метода Гаусса с потоками
+    for (int pivot = 1; pivot <= var_count; pivot++) { // Запускаем основной цикл метода Гаусса – проходим по ведущим элементам (pivot).
+        for (int row = pivot + 1; row <= var_count; row++) { // Для каждой строки ниже текущей (pivot) создаём поток для её обработки.
+            thread_data[row - pivot - 1].current_row = row; //current_row – номер строки.
+            thread_data[row - pivot - 1].lead_element = pivot;  //lead_element – индекс ведущего элемента.
 
-            dispatch_semaphore_wait(semaphore, DISPATCH_TIME_FOREVER);
+            dispatch_semaphore_wait(thread_semaphore, DISPATCH_TIME_FOREVER);   //Ждём свободного потока (если лимит достигнут, задерживаем выполнение).
 
-            if (pthread_create(&threads[i - pivot - 1], NULL, gauss_elimination, &thread_data[i - pivot - 1]) != 0) {
-                fprintf(stderr, "Ошибка: не удалось создать поток для строки %d.\n", i);
-                return -1;
-            }
+            if (pthread_create(&threads[row - pivot - 1], NULL, gauss_step, &thread_data[row - pivot - 1]) != 0) {
+                fprintf(stderr, "Ошибка: не удалось создать поток.\n");
+                return EXIT_FAILURE;    
+            }   // Создаём новый поток, который выполняет gauss_step(), передавая в него thread_data[row - pivot - 1].
         }
 
-        for (int i = 0; i < n - pivot; i++) {
+        for (int i = 0; i < var_count - pivot; i++) {
             pthread_join(threads[i], NULL);
-        }
+        }   //Ждём, пока все потоки завершатся (чтобы избежать гонки данных).
     }
 
-    backward_substitution();
-    print_solutions();
+    back_substitution();
+    display_solutions();    //Выводим найденные решения.
 
-    clock_t end_time = clock();
-    double time_spent = (double)(end_time - start_time) / CLOCKS_PER_SEC;
-    printf("\nВремя выполнения программы: %f секунд\n", time_spent);
+    clock_t end = clock();
+    printf("\nВремя выполнения: %.6f секунд\n", (double)(end - start) / CLOCKS_PER_SEC);
 
-    return 0;
+    return EXIT_SUCCESS;
 }
+
+
+
+Выводы по таблице
+
+1. Снижение эффективности при увеличении потоков
+    В идеальном случае, если бы масштабируемость была линейной, при 2 потоках 
+    ускорение было бы 2, при 4 потоках — 4, и так далее.
+    Однако реальное ускорение заметно меньше, а эффективность падает. Это связано с:
+
+    1.1. Оверхедом на управление потоками – чем больше потоков, 
+    тем больше времени тратится на синхронизацию.
+    1.2. Неравномерной загрузкой потоков – некоторые потоки могут 
+    простаивать или тратить время на ожидание.
+    1.3. Ограничением аппаратных ресурсов – если процессоров или ядер не хватает, 
+    потоки начинают конкурировать за ресурсы.
+
+2. Наличие точки насыщения
+    Ускорение при 10-12 потоках практически не растёт, а эффективность сильно падает.
+    Это говорит о том, что после 6 потоков добавление новых потоков не даёт 
+    значительного прироста производительности.
+    Вероятно, система имеет физические ограничения (например, 
+    малое количество ядер или интенсивный обмен данными между потоками).
+
+Оптимальное количество потоков
+
+Исходя из данных, оптимальное число потоков — 6:
+
+Ускорение 1.64, что близко к максимальному.
+Эффективность 27.4%, что хоть и невысоко, но гораздо лучше, чем при 8-12 потоках.
+
+Заключение
+
+1. Параллельный алгоритм действительно ускоряет 
+вычисления, но с ростом числа потоков эффективность падает.
+2. Оптимальное число потоков — то, при котором ускорение значительное, 
+но потери на управление потоками минимальны (в данном случае около 6).
+3. Дальнейшее увеличение потоков даёт всё меньший прирост 
+производительности из-за накладных расходов и ограничений железа.
+
+
+
+-------------------теория---------------------------
+
+
+
+Синхронизация обеспечивает упорядоченное и безопасное взаимодействие потоков, 
+предотвращая конфликты и обеспечивая целостность данных.
+
+Мьютекс (Mutual Exclusion Object) — это примитив, обеспечивающий эксклюзивный доступ 
+к разделяемому ресурсу. Только один поток может захватить мьютекс в любой момент времени.
+
+Семафор — это примитив, представляющий собой целочисленный счётчик, который ограничивает 
+количество потоков, одновременно получающих доступ к определённому ресурсу
+
+Барьер — это примитив, используемый для синхронизации группы потоков, требующий, 
+чтобы все потоки достигли определённой точки выполнения, прежде чем продолжить работу.
+
+Условная переменная — это примитив, позволяющий потокам ожидать определённого условия 
+и уведомлять другие потоки о его наступлении. Используется вместе с мьютексами.
+
+
+Элементы потока
+
+Каждый поток содержит:
+
+ID потока (pthread_t)
+Стек для локальных переменных
+Регистры процессора (хранят текущее состояние выполнения)
+Общее адресное пространство (разделяет память с другими потоками)

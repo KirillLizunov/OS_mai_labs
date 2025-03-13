@@ -26,7 +26,7 @@ void display_system() {
             printf("%.2f*x%d", matrix[row][col], col);
             if (col < var_count) printf(" + ");
         }
-        printf(" = %.2f\n", matrix[row][var_count + 1]);
+        printf(" = %.2f\n", matrix[row][var_count + 1]);    
     }
 }
 
@@ -54,16 +54,16 @@ void input_matrix() {
 
 void *gauss_step(void *arg) {
     GaussThreadData *data = (GaussThreadData *)arg;
-    int i = data->current_row;
-    int pivot = data->lead_element;
+    int i = data->current_row; // Текущая строка
+    int pivot = data->lead_element; // Ведущий элемент (строка)
 
     if (fabs(matrix[pivot][pivot]) < TOLERANCE) {
         dispatch_semaphore_signal(thread_semaphore);
         pthread_exit(NULL);
     }
 
-    float factor = matrix[i][pivot] / matrix[pivot][pivot];
-    for (int col = pivot; col <= var_count; col++) {
+    float factor = matrix[i][pivot] / matrix[pivot][pivot]; // Вычисляем коэффициент
+    for (int col = pivot; col <= var_count; col++) { // Обновляем элементы строки
         matrix[i][col] -= factor * matrix[pivot][col];
     }
     matrix[i][var_count + 1] -= factor * matrix[pivot][var_count + 1];
@@ -101,7 +101,7 @@ int main(int argc, char *argv[]) {
         return EXIT_FAILURE;
     }
 
-    thread_semaphore = dispatch_semaphore_create(thread_limit);
+    thread_semaphore = dispatch_semaphore_create(thread_limit); //семафор ограничивает число одновременно работающих потоков. Позволяет не превышать thread_limit
 
     printf("Введите количество переменных (1-%d): ", MAX_VARS);
     while (scanf("%d", &var_count) != 1 || var_count <= 0 || var_count > MAX_VARS) {
@@ -125,12 +125,13 @@ int main(int argc, char *argv[]) {
 
     clock_t start = clock();
 
-    for (int pivot = 1; pivot <= var_count; pivot++) {
-        for (int row = pivot + 1; row <= var_count; row++) {
+    //Прямой ход метода Гаусса с потоками. Программа распараллеливается
+    for (int pivot = 1; pivot <= var_count; pivot++) { // Выбираем ведущий элемент
+        for (int row = pivot + 1; row <= var_count; row++) { // Все строки ниже pivot
             thread_data[row - pivot - 1].current_row = row;
             thread_data[row - pivot - 1].lead_element = pivot;
 
-            dispatch_semaphore_wait(thread_semaphore, DISPATCH_TIME_FOREVER);
+            dispatch_semaphore_wait(thread_semaphore, DISPATCH_TIME_FOREVER);   // Ждём свободного потока (если лимит достигнут, задерживаем выполнение).
 
             if (pthread_create(&threads[row - pivot - 1], NULL, gauss_step, &thread_data[row - pivot - 1]) != 0) {
                 fprintf(stderr, "Ошибка: не удалось создать поток.\n");
@@ -143,7 +144,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    back_substitution();
+    back_substitution();    //Запускаем обратный ход, вычисляя значения переменных.
     display_solutions();
 
     clock_t end = clock();
