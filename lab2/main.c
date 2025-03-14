@@ -19,16 +19,16 @@ typedef struct {
     int lead_element;
 } GaussThreadData;
 
-void display_system() {
-    printf("\nСистема уравнений:\n");
-    for (int row = 1; row <= var_count; row++) {
-        for (int col = 1; col <= var_count; col++) {
-            printf("%.2f*x%d", matrix[row][col], col);
-            if (col < var_count) printf(" + ");
-        }
-        printf(" = %.2f\n", matrix[row][var_count + 1]);    
-    }
-}
+// void display_system() {
+//     printf("\nСистема уравнений:\n");
+//     for (int row = 1; row <= var_count; row++) {
+//         for (int col = 1; col <= var_count; col++) {
+//             printf("%.2f*x%d", matrix[row][col], col);
+//             if (col < var_count) printf(" + ");
+//         }
+//         printf(" = %.2f\n", matrix[row][var_count + 1]);    
+//     }
+// }
 
 void create_random_matrix() {
     srand(5678);
@@ -85,18 +85,18 @@ void back_substitution() {
 void display_solutions() {
     printf("\nРешения системы:\n");
     for (int i = 1; i <= var_count; i++) {
-        printf("x%d = %.6f\n", i, solutions[i]);
+        // printf("x%d = %.6f\n", i, solutions[i]);
     }
 }
 
 int main(int argc, char *argv[]) {
-    if (argc != 2) {
+    if (argc != 2) {    //Программа ожидает один аргумент – количество потоков.
         fprintf(stderr, "Использование: %s <число потоков>\n", argv[0]);
         return EXIT_FAILURE;
     }
 
-    thread_limit = atoi(argv[1]);
-    if (thread_limit <= 0) {
+    thread_limit = atoi(argv[1]);   //Преобразуем аргумент командной строки в число (atoi()).
+    if (thread_limit <= 0) {    //Если число потоков ≤ 0, программа завершается с ошибкой.
         fprintf(stderr, "Ошибка: количество потоков должно быть положительным.\n");
         return EXIT_FAILURE;
     }
@@ -116,9 +116,9 @@ int main(int argc, char *argv[]) {
         while (getchar() != '\n');
     }
 
-    (mode == 1) ? input_matrix() : create_random_matrix();
+    (mode == 1) ? input_matrix() : create_random_matrix();  //Вызываем функцию заполнения матрицы вручную или случайно.
 
-    display_system();
+    // display_system();
 
     pthread_t threads[MAX_VARS];
     GaussThreadData thread_data[MAX_VARS];

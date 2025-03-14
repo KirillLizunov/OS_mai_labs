@@ -63,7 +63,12 @@ void make_move(int server_fd, char *game_name, char board[BOARD_SIZE][BOARD_SIZE
         char buffer[BUFFER_SIZE];
         sprintf(buffer, "MOVE %s %d %d", game_name, x, y);
         write(server_fd, buffer, BUFFER_SIZE);
+
         read(server_fd, buffer, BUFFER_SIZE);
+        
+        // **Добавляем отладочный вывод**
+        printf("Client received: %s\n", buffer);  
+        
         if (strcmp(buffer, "HIT") == 0) {
             printf("Hit!\n");
             board[x][y] = 'X';

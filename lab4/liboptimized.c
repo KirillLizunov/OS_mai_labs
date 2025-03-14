@@ -3,28 +3,34 @@
 #include <string.h>
 
 int PrimeCount(int A, int B) { 
-    if (B < 2) return 0;
+    if (B < 2) return 0;  // Если верхний предел меньше 2, простых чисел нет
 
+    // Выделяем память под массив для Решета Эратосфена
     bool* sieve = (bool*)malloc((B + 1) * sizeof(bool)); 
     if (!sieve) return 0;
 
+    // Изначально считаем, что все числа - простые
     memset(sieve, true, (B + 1) * sizeof(bool));
 
+    // 0 и 1 не являются простыми
     sieve[0] = sieve[1] = false;
+
+    // Основной алгоритм
     for (int i = 2; i * i <= B; i++) { 
-        if (sieve[i]) {
+        if (sieve[i]) {  // Если i - простое
             for (int j = i * i; j <= B; j += i) { 
-                sieve[j] = false;
+                sieve[j] = false;  // Все кратные i - составные
             }
         }
     }
 
+    // Подсчитываем количество простых чисел в диапазоне [A, B]
     int count = 0;
     for (int i = A; i <= B; i++) { 
         if (sieve[i]) count++;
     }
 
-    free(sieve); 
+    free(sieve);  // Освобождаем память
     return count;
 }
  

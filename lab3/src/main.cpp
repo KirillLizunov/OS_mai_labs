@@ -28,6 +28,9 @@ int main() {
     std::string file2_name;
     std::getline(std::cin, file2_name);
 
+    //Запрашиваем у пользователя два имени файлов для записи вывода каждого дочернего процесса
+    //std::getline(std::cin, file1_name); читаем строку с именем файла
+
     int file1 = open(file1_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     int file2 = open(file2_name.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
     if (file1 < 0 || file2 < 0) {
@@ -38,10 +41,10 @@ int main() {
     const char *shm_name1 = "/shm_child1";
     const char *shm_name2 = "/shm_child2";
 
-    shm_unlink(shm_name1);
+    shm_unlink(shm_name1);  //Удаляет разделяемую память, если она уже существует.
     shm_unlink(shm_name2);
 
-    int shm_fd1 = shm_open(shm_name1, O_CREAT | O_RDWR, 0666);
+    int shm_fd1 = shm_open(shm_name1, O_CREAT | O_RDWR, 0666);  //Создаёт POSIX shared memory (разделяемый объект памяти).
     int shm_fd2 = shm_open(shm_name2, O_CREAT | O_RDWR, 0666);
 
     if (shm_fd1 == -1 || shm_fd2 == -1) {
@@ -49,7 +52,7 @@ int main() {
         exit(1);
     }
 
-    ftruncate(shm_fd1, sizeof(shared_data));
+    ftruncate(shm_fd1, sizeof(shared_data));    //ftruncate() Задаёт размер разделяемой памяти (sizeof(shared_data)). mmap() → Отображает память в виртуальное адресное пространство процесса.
     ftruncate(shm_fd2, sizeof(shared_data));
 
     shared_data *shm_ptr1 = (shared_data *) mmap(NULL, sizeof(shared_data), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd1, 0);

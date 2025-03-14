@@ -1,0 +1,36 @@
+gcc server.c -o server
+gcc client.c -o client
+
+./server
+
+./client
+
+Enter your login: player1
+
+1. Create game
+2. Join game
+Choice: 1
+
+Enter game name: battle1
+
+Теперь запустите второго клиента:
+
+./client
+
+Enter your login: player2
+
+Enter game name to join: battle1
+
+Place your ships (e.g., 0 0 for (0,0)): 
+Ship 1: 1 1
+Ship 2: 2 2
+Ship 3: 3 3
+Ship 4: 4 4
+Ship 5: 5 5
+
+Your move (x y): 1 1
+
+You win!  (если победил игрок)
+You lose!  (если проиграл)
+
+Когда вы закончите, остановите сервер, нажав Ctrl+C. Это вызовет функцию cleanup(), которая удалит server_pipe и файл game.txt.

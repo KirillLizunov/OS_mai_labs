@@ -106,6 +106,7 @@ void handle_client(int client_fd, char *client_pipe) {
         char game_name[20];
         int x, y;
         sscanf(buffer, "MOVE %s %d %d", game_name, &x, &y);
+        
         for (int i = 0; i < game_count; i++) {
             if (strcmp(games[i].name, game_name) == 0) {
                 if (games[i].game_over) {
@@ -115,18 +116,22 @@ void handle_client(int client_fd, char *client_pipe) {
 
                 int target_player = (games[i].turn + 1) % 2;
                 char result = games[i].players[target_player].board[x][y];
+
                 if (result == 'S') {
                     games[i].players[target_player].board[x][y] = 'X'; // Попадание
                     games[i].players[target_player].ships_left--;
+
                     if (games[i].players[target_player].ships_left == 0) {
                         write(games[i].players[games[i].turn].fd, "WIN", 3);
                         write(games[i].players[target_player].fd, "LOSE", 4);
                         games[i].game_over = 1;
                     } else {
+                        printf("Sending response: HIT\n");  // <-- Добавляем перед write()
                         write(games[i].players[games[i].turn].fd, "HIT", 3);
                     }
                 } else {
                     games[i].players[target_player].board[x][y] = 'M'; // Промах
+                    printf("Sending response: MISS\n");  // <-- Добавляем перед write()
                     write(games[i].players[games[i].turn].fd, "MISS", 4);
                 }
                 games[i].turn = target_player; // Передача хода другому игроку

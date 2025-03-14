@@ -1,0 +1,4 @@
+/Users/pearl.lilie/Desktop/Labs/OS_Labs/KP/build/CMakeFiles/client.dir
+/Users/pearl.lilie/Desktop/Labs/OS_Labs/KP/build/CMakeFiles/server.dir
+/Users/pearl.lilie/Desktop/Labs/OS_Labs/KP/build/CMakeFiles/edit_cache.dir
+/Users/pearl.lilie/Desktop/Labs/OS_Labs/KP/build/CMakeFiles/rebuild_cache.dir

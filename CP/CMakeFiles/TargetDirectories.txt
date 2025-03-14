@@ -1,0 +1,4 @@
+/Users/user/Desktop/OS_mai_labs/CP/CMakeFiles/client.dir
+/Users/user/Desktop/OS_mai_labs/CP/CMakeFiles/server.dir
+/Users/user/Desktop/OS_mai_labs/CP/CMakeFiles/edit_cache.dir
+/Users/user/Desktop/OS_mai_labs/CP/CMakeFiles/rebuild_cache.dir
